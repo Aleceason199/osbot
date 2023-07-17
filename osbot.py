@@ -57,6 +57,10 @@ def returnSlugTableValues(identifier):
     res = cur.execute('SELECT * FROM server WHERE serverID=?', identifier)
     return res.fetchone()
 
+def removeChannelOnServer(messageID):
+    cur.execute("DELETE FROM server WHERE messageID=?", (messageID, ))
+    con.commit()
+
 def returnAllServerTableValues():
     res = cur.execute('SELECT * FROM server')
     return res.fetchall()
@@ -75,7 +79,7 @@ def getStats(slug, key):
         dic = response.json()
         return dic
     else:
-        print("error")
+        print("could not get stats from " + slug)
 
 #Function that updates the stat variables based on the returned stats
 def updateStatVariables(stats):
@@ -118,9 +122,6 @@ class MyClient(discord.Client):
         global statsChannelMessage
         self.update.start()
 
-        
-
-    
     #updates the stats
     @tasks.loop(minutes=1)
     async def update(self):
@@ -162,12 +163,27 @@ class MyClient(discord.Client):
             embed.set_image(url=collectionPicture)
             
             #finds the message and updates the embed
-            c = await client.fetch_channel(statsChannel)
-            m = await c.fetch_message(statsChannelMessage)
-            await m.edit(embed=embed)
-
+            try:
+                c = await client.fetch_channel(statsChannel)
+                m = await c.fetch_message(statsChannelMessage)
+                await m.edit(embed=embed)
+            except:
+                removeChannelOnServer(x[2])
 
     async def on_message(self, message):
+
+        global collectionDescription
+        global collectionPicture
+        global collectionName
+        global collectionChain
+        global collectionURL
+        global totalSales
+        global totalSupply
+        global totalVolume
+        global sevenDayAvgPrice
+        global floorPrice
+        global owners
+
         #returns if message is sent by self
         if message.author == client.user:
             return
@@ -183,7 +199,11 @@ class MyClient(discord.Client):
                 #gets the stats from the slug name
                 slug = message.content[4:]
 
-                updateStatVariables(getStats(slug, APIkey))
+                try:
+                    updateStatVariables(getStats(slug, APIkey))
+                except:
+                    await message.channel.send("Slug not found(or opensea API is down..)")
+                    return
 
                 #Creates an embed with all the data and sends it to the channel
                 embed = discord.Embed(title=collectionName,
@@ -215,13 +235,18 @@ class MyClient(discord.Client):
             #command for finding just the floor value of a sllug
             if message.content[:9]==";osfloor ":
                 slug = message.content[9:]
-                stats = getStats(slug,APIkey)
 
-                floorPrice = str(stats['collection']['stats']['floor_price'])
-                collectionPicture = str(stats['collection']['image_url'])
-                collectionName = str(stats['collection']['name'])
-                collectionChain = str(stats['collection']['primary_asset_contracts'][0]['chain_identifier'])
-                collectionURL = "https://opensea.io/collection/" + str(stats['collection']['slug'])
+                try:
+                    stats = getStats(slug,APIkey)
+
+                    floorPrice = str(stats['collection']['stats']['floor_price'])
+                    collectionPicture = str(stats['collection']['image_url'])
+                    collectionName = str(stats['collection']['name'])
+                    collectionChain = str(stats['collection']['primary_asset_contracts'][0]['chain_identifier'])
+                    collectionURL = "https://opensea.io/collection/" + str(stats['collection']['slug'])
+                except:
+                    await message.channel.send("Slug not found(or opensea API is down..)")
+                    return
 
                 embed = discord.Embed(title="Current floor price:",
                         description="**" + floorPrice + " " + collectionChain + "**",
@@ -236,10 +261,14 @@ class MyClient(discord.Client):
 
 
             #command to setup a updating message that keeps you updated on a slug
-            if(message.content[:8]==";osetup "):
+            if(message.content[:8]==";osetup " and message.author.guild_permissions.administrator):
 
                 slug = message.content[8:]
-                updateStatVariables(getStats(slug, APIkey))
+                try:
+                    updateStatVariables(getStats(slug, APIkey))
+                except:
+                    await message.channel.send("Slug not found(or opensea API is down..)")
+                    return
 
                 #Creates an embed with all the data and sends it to the channel
                 embed = discord.Embed(title=collectionName,
